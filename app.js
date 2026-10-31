@@ -191,7 +191,7 @@ const floor=mesh(new C.PlaneGeometry(200,200),mat('#e9e7e2',0,.9),[0,-.0005,0],s
 let theta=0,phi=1.45,radius=3.40;const target=new C.Vector3(-.01,.52,0);let desired=null;
 const presets={side:[0,Math.PI/2,2.8,'RIGHT PROFILE'],three:[.66,1.28,2.85,'FRONT THREE-QUARTER'],rear:[-.70,1.32,2.85,'REAR THREE-QUARTER'],left:[Math.PI,Math.PI/2,2.8,'LEFT PROFILE']};
 function setView(v,instant=false){if(!Object.prototype.hasOwnProperty.call(presets,v))v='side';const p=presets[v];desired={theta:p[0],phi:p[1],radius:p[2]};if(instant){({theta,phi,radius}=desired);desired=null;}document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===v));document.getElementById('view-label').textContent=p[3];invalidate();}
-function resize(){const w=stage.clientWidth,h=stage.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();invalidate();}window.addEventListener('resize',resize);resize();
+function resize(){const w=renderer.domElement.clientWidth,h=renderer.domElement.clientHeight;if(!w||!h)return;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();invalidate();}window.addEventListener('resize',resize);window.visualViewport?.addEventListener('resize',resize);new ResizeObserver(resize).observe(renderer.domElement);resize();
 let drag=false,last=[0,0],moved=false;const pointers=new Map();let pinch=0;
 renderer.domElement.addEventListener('pointerdown',e=>{pointers.set(e.pointerId,[e.clientX,e.clientY]);drag=true;last=[e.clientX,e.clientY];renderer.domElement.setPointerCapture(e.pointerId);desired=null;if(pointers.size===2){const p=[...pointers.values()];pinch=Math.hypot(p[0][0]-p[1][0],p[0][1]-p[1][1]);}});
 renderer.domElement.addEventListener('pointermove',e=>{if(!drag)return;pointers.set(e.pointerId,[e.clientX,e.clientY]);if(pointers.size===2){const p=[...pointers.values()],d=Math.hypot(p[0][0]-p[1][0],p[0][1]-p[1][1]);if(pinch)radius*=pinch/d;pinch=d;}else{theta-=(e.clientX-last[0])*.006;phi-= (e.clientY-last[1])*.005;}phi=C.MathUtils.clamp(phi,.35,1.7);radius=C.MathUtils.clamp(radius,1.8,5.5);last=[e.clientX,e.clientY];document.querySelectorAll('[data-view]').forEach(b=>b.classList.remove('active'));document.getElementById('view-label').textContent='ORBIT VIEW';invalidate();});
@@ -227,7 +227,7 @@ function render(){
  pendingFrame=false;if(!running)return;
  try {
   if(desired){theta=C.MathUtils.lerp(theta,desired.theta,.14);phi=C.MathUtils.lerp(phi,desired.phi,.14);radius=C.MathUtils.lerp(radius,desired.radius,.14);if(Math.abs(theta-desired.theta)+Math.abs(phi-desired.phi)+Math.abs(radius-desired.radius)<.0001)desired=null;}
-  const responsive=camera.aspect<1.1?1.1/camera.aspect:1;
+  const responsive=camera.aspect<1.1?1.1/camera.aspect:(window.innerHeight<=520?1.18:1);
   camera.position.set(target.x+radius*responsive*Math.sin(theta)*Math.sin(phi),target.y+radius*responsive*Math.cos(phi),target.z+radius*responsive*Math.cos(theta)*Math.sin(phi));camera.lookAt(target);
   if(dirty||desired){renderer.render(scene,camera);dirty=false;}if(desired)invalidate();
  } catch(error){running=false;window.JAZZ_SHOW_STATIC('3D描画を続けられないため、静止画に切り替えました。','render-error');console.warn('JAZZ render error:',error?.message);}
@@ -235,7 +235,7 @@ function render(){
 // Initial render must succeed before the static image and disabled controls disappear.
 render();if(running)window.JAZZ_READY();
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)invalidate();});
-window.JAZZ_PROTOTYPE={version:'0.4.0',model:'Owned procedural approximation based on supplied reference',wheelbase:1.325,frontRimDiameter:.4064,rearRimDiameter:.3048,meshes:batchedDrawObjects,originalDrawObjects,mobile,setView,setTires,setHandlebar,setTank,setLight,setMuffler,setSeat,setFender,setPartColor,resetAppearance,tirePose,renderer,scene,camera,bike};
+window.JAZZ_PROTOTYPE={version:'0.4.1',model:'Owned procedural approximation based on supplied reference',wheelbase:1.325,frontRimDiameter:.4064,rearRimDiameter:.3048,meshes:batchedDrawObjects,originalDrawObjects,mobile,setView,setTires,setHandlebar,setTank,setLight,setMuffler,setSeat,setFender,setPartColor,resetAppearance,tirePose,renderer,scene,camera,bike};
 
 } catch(error) {
  const message=/WebGL|context/i.test(error?.message||'')
