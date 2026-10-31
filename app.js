@@ -1,0 +1,174 @@
+import * as THREE from './vendor/three.module.js';
+
+try {
+
+// Owned procedural meshes. Metres; longitudinal +X = front, +Z = photograph side.
+// Reference-informed JAZZ proportions. WB 1.325m; 16/12-inch rims.
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#e9e7e2');
+const stage = document.getElementById('stage');
+const mobile = matchMedia('(pointer: coarse)').matches || innerWidth < 720;
+const renderer = new THREE.WebGLRenderer({antialias:!mobile,alpha:false,preserveDrawingBuffer:false,powerPreference:'low-power'});
+renderer.setPixelRatio(Math.min(devicePixelRatio,mobile?1.25:1.75));
+renderer.shadowMap.enabled=true;
+let running=true, dirty=true, pendingFrame=false;
+function invalidate(){dirty=true;if(running&&!pendingFrame){pendingFrame=true;requestAnimationFrame(render);}}
+renderer.domElement.addEventListener('webglcontextlost', event=>{
+  event.preventDefault();running=false;
+  window.JAZZ_SHOW_STATIC('3D描画が中断されたため、静止画に切り替えました。ページを再読み込みすると再試行できます。','webgl-context-lost');
+});
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.25;
+stage.appendChild(renderer.domElement);
+const camera=new THREE.PerspectiveCamera(35,1,.02,30);
+const bike=new THREE.Group();scene.add(bike);bike.name='Honda JAZZ — reference-informed geometry';
+const C=THREE;
+const mat=(color,metalness=0,roughness=.5,other={})=>new C.MeshStandardMaterial({color,metalness,roughness,...other});
+const paint=mat('#080c10',.62,.2);const frame=mat('#080b0d',.55,.28);
+const chrome=mat('#dce0e2',1,.14);const satin=mat('#a9adb0',.85,.3);
+const alloy=mat('#aeb5b7',.8,.37);const rubber=mat('#161817',.02,.88);
+const treadMat=mat('#222422',.02,.95);const leather=mat('#171b1b',.02,.59);
+const dark=mat('#222728',.55,.4);const amber=mat('#f69b24',.15,.25,{emissive:'#9e4004',emissiveIntensity:.15});
+const red=mat('#a62620',.1,.27);const lamp=mat('#e8e9dc',.15,.17);const boltmat=mat('#b9c2c4',.85,.24);
+function mesh(g,m,p=[0,0,0],group=bike){const o=new C.Mesh(g,m);o.position.set(...p);o.castShadow=true;o.receiveShadow=true;group.add(o);return o;}
+function tube(points,r,m=chrome,segments=60,group=bike){const crv=new C.CatmullRomCurve3(points.map(p=>new C.Vector3(...p)));return mesh(new C.TubeGeometry(crv,segments,r,10,false),m,[0,0,0],group);}
+function rod(a,b,r,m=chrome,r2=r,group=bike){const A=new C.Vector3(...a),B=new C.Vector3(...b);const o=mesh(new C.CylinderGeometry(r2,r,A.distanceTo(B),20),m,A.clone().add(B).multiplyScalar(.5).toArray(),group);o.quaternion.setFromUnitVectors(new C.Vector3(0,1,0),B.sub(A).normalize());return o;}
+function cyl(r,h,p,m=chrome,axis=[0,0,1],r2=r){const o=mesh(new C.CylinderGeometry(r2,r,h,48),m,p);o.quaternion.setFromUnitVectors(new C.Vector3(0,1,0),new C.Vector3(...axis).normalize());return o;}
+function ell(p,s,m=chrome){const o=mesh(new C.SphereGeometry(1,40,24),m,p);o.scale.set(...s);return o;}
+function ring(R,r,p,m=chrome){return mesh(new C.TorusGeometry(R,r,10,96),m,p);}
+function roundedBox(w,h,d,rad,p,m,bevel=.004){const shape=new C.Shape();const x=-w/2,y=-h/2;shape.moveTo(x+rad,y);shape.lineTo(x+w-rad,y);shape.quadraticCurveTo(x+w,y,x+w,y+rad);shape.lineTo(x+w,y+h-rad);shape.quadraticCurveTo(x+w,y+h,x+w-rad,y+h);shape.lineTo(x+rad,y+h);shape.quadraticCurveTo(x,y+h,x,y+h-rad);shape.lineTo(x,y+rad);shape.quadraticCurveTo(x,y,x+rad,y);const g=new C.ExtrudeGeometry(shape,{depth:d,steps:1,bevelEnabled:true,bevelSegments:3,steps:1,bevelSize:bevel,bevelThickness:bevel,curveSegments:8});g.translate(0,0,-d/2);return mesh(g,m,p);}
+function screw(p,r=.004){cyl(r,.004,p,boltmat);rod([p[0]-r*.55,p[1],p[2]+.0025],[p[0]+r*.55,p[1],p[2]+.0025],.00065,dark);}
+const tireGroups=[];
+function toroidalTire(x,y,outer,rim,width){const startIndex=bike.children.length;const n=112,k=28,positions=[],idx=[];const mid=(outer+rim)/2,tr=(outer-rim)/2;for(let i=0;i<=n;i++){const t=i/n*Math.PI*2;for(let j=0;j<=k;j++){const a=j/k*Math.PI*2;const rad=mid+tr*Math.cos(a);positions.push(x+rad*Math.cos(t),y+rad*Math.sin(t),width/2*Math.sin(a));}}for(let i=0;i<n;i++)for(let j=0;j<k;j++){let a=i*(k+1)+j,b=a+k+1;idx.push(a,b,a+1,b,b+1,a+1);}const g=new C.BufferGeometry();g.setAttribute('position',new C.Float32BufferAttribute(positions,3));g.setIndex(idx);g.computeVertexNormals();mesh(g,rubber);for(const s of [-1,1]){ring(rim+.009,.0014,[x,y,s*width*.32],rubber);ring(outer-.017,.0009,[x,y,s*width*.31],treadMat);}for(let i=0;i<72;i++){const a=i/72*Math.PI*2;for(const s of [-1,0,1]){const rr=outer-(s?tr*.2:0)-.001;let b=mesh(new C.BoxGeometry(.008,.002,width*.28),treadMat,[x+rr*Math.cos(a),y+rr*Math.sin(a),s*width*.3]);b.rotation.z=a-Math.PI/2;b.rotateY(s*.35);}}const group=new C.Group();group.name=x>0?'Front tire':'Rear tire';const tireParts=bike.children.slice(startIndex);for(const p of tireParts){p.updateMatrix();p.geometry.applyMatrix4(p.matrix);p.position.set(0,0,0);p.quaternion.identity();p.scale.set(1,1,1);p.updateMatrix();const pos=p.geometry.getAttribute('position');for(let i=0;i<pos.count;i++){const dx=pos.getX(i)-x,dy=pos.getY(i)-y,r=Math.hypot(dx,dy);if(r>outer){pos.setXY(i,x+dx*outer/r,y+dy*outer/r);}}p.geometry.computeVertexNormals();p.userData.basePositions=new Float32Array(pos.array);group.add(p);}bike.add(group);tireGroups.push({group,x,y,rim,baselineRadius:outer});}
+function wheel(x,y,outer,rim,width,rear=false){toroidalTire(x,y,outer,rim,width);const rimWidth=rear?.07:.035;for(const s of [-1,1]){ring(rim,.007,[x,y,s*rimWidth/2]);ring(rim-.009,.002,[x,y,s*rimWidth/2]);} // inner rim barrel, not a solid disc
+const rshape=new C.Shape();rshape.absarc(0,0,rim-.002,0,Math.PI*2,false);const hole=new C.Path();hole.absarc(0,0,rim-.012,0,Math.PI*2,true);rshape.holes.push(hole);const rg=new C.ExtrudeGeometry(rshape,{depth:rimWidth,bevelEnabled:false,curveSegments:96});rg.translate(x,y,-rimWidth/2);mesh(rg,satin);
+if(rear){for(const s of [-1,1]){const dish=mesh(new C.LatheGeometry([new C.Vector2(.069,.017),new C.Vector2(.085,.013),new C.Vector2(.119,.004),new C.Vector2(.145,0)],96),chrome,[x,y,s*.041]);dish.rotation.x=s*Math.PI/2;}}
+const hubR=rear?.070:.069; cyl(hubR,rear?.085:.075,[x,y,0],alloy);for(const s of [-1,1]){cyl(hubR*.94,.009,[x,y,s*(rear?.048:.042)],satin);ring(hubR*.88,.002,[x,y,s*(rear?.054:.047)],chrome);for(let i=0;i<36;i++){const a=i/36*Math.PI*2,b=a+(i%2? .42:-.42);rod([x+hubR*.75*Math.cos(a),y+hubR*.75*Math.sin(a),s*.032],[x+(rim-.008)*Math.cos(b),y+(rim-.008)*Math.sin(b),s*rimWidth/2],.00135,chrome);if(s===1){const q=new C.Vector3(Math.cos(b),Math.sin(b),0);rod([x+(rim-.022)*q.x,y+(rim-.022)*q.y,s*rimWidth/2],[x+(rim-.010)*q.x,y+(rim-.010)*q.y,s*rimWidth/2],.0023,satin);}}
+for(let i=0;i<6;i++){const a=i/6*Math.PI*2;screw([x+hubR*.70*Math.cos(a),y+hubR*.70*Math.sin(a),s*(rear?.056:.05)],.003);}}
+cyl(.012,width+.052,[x,y,0],chrome);for(const s of [-1,1])cyl(.012,.009,[x,y,s*(width/2+.027)],chrome);
+}
+wheel(-.6625,.267,.267,.1524,.114,true);wheel(.6625,.267,.267,.2032,.0635);
+// Sculpted fender shells, with rolled lips and real thickness.
+function fender(cx,cy,R,w,start,end,m){const seg=70,cross=20,pts=[],ids=[];for(let i=0;i<=seg;i++){const a=start+(end-start)*i/seg;for(let j=0;j<=cross;j++){const z=(j/cross-.5)*w;const rr=R+.013*Math.cos((j/cross-.5)*Math.PI);pts.push(cx+rr*Math.cos(a),cy+rr*Math.sin(a),z);}}for(let i=0;i<seg;i++)for(let j=0;j<cross;j++){let a=i*(cross+1)+j,b=a+cross+1;ids.push(a,b,a+1,b,b+1,a+1);}const g=new C.BufferGeometry();g.setAttribute('position',new C.Float32BufferAttribute(pts,3));g.setIndex(ids);g.computeVertexNormals();const mm=m.clone();mm.side=C.DoubleSide;mesh(g,mm);for(const s of [-1,1]){let p=[];for(let i=0;i<=seg;i++){const a=start+(end-start)*i/seg;p.push([cx+R*Math.cos(a),cy+R*Math.sin(a),s*w/2]);}tube(p,.003,m,70);}}
+fender(.6625,.267,.282,.080,1.30,3.55,paint);
+fender(-.6625,.267,.310,.145,.70,2.64,paint);
+// Rear fender tail, lamp, mudguard / licence mount.
+const mud=roundedBox(.16,.11,.004,.008,[-.882,.447,0],rubber);mud.rotation.y=Math.PI/2;mud.rotation.z=-.4;
+tube([[-.59,.568,-.072],[-.76,.586,-.072],[-.88,.588,-.072]],.01,paint);
+roundedBox(.032,.046,.13,.005,[-.886,.580,0],red);cyl(.004,.13,[-.899,.573,0],chrome);
+// Double cradle frame. Thin, open frame triangles are central to the JAZZ silhouette.
+for(const s of [-1,1]){const z=s*.061;tube([[-.406,.461,z],[-.347,.274,z],[-.29,.167,z],[-.07,.156,z],[.055,.178,z],[.244,.652,z]],.014,frame);tube([[-.406,.461,z],[-.22,.532,z],[.095,.628,z],[.244,.652,z]],.015,frame);rod([-.406,.461,z],[-.325,.25,z],.012,frame);rod([-.325,.25,z],[-.66,.259,z],.016,frame);rod([-.33,.245,z],[-.63,.208,z],.011,frame);rod([-.64,.25,z],[-.63,.37,z],.010,frame);}
+rod([-.33,.245,-.09],[-.33,.245,.09],.024,frame);
+rod([.233,.632,0],[.199,.702,0],.030,frame);
+// Swing arms, rear drum lever and brake rod.
+for(const s of [-1,1]){rod([-.348,.267,s*.085],[-.663,.262,s*.088],.019,frame);cyl(.017,.012,[-.348,.267,s*.096],satin);rod([-.66,.265,s*.068],[-.704,.229,s*.08],.009,satin);rod([-.70,.232,s*.08],[-.285,.216,s*.079],.003,chrome);}
+// Twin inclined shock absorbers with real helical springs.
+for(const s of [-1,1]){let a=new C.Vector3(-.551,.306,s*.102),b=new C.Vector3(-.406,.464,s*.105);rod(a.toArray(),b.toArray(),.014,chrome);const d=b.clone().sub(a),length=d.length();const spring=new C.Group();bike.add(spring);spring.position.copy(a);spring.quaternion.setFromUnitVectors(new C.Vector3(0,1,0),d.normalize());const points=[];for(let i=0;i<=240;i++){const u=i/240;points.push([.020*Math.cos(u*14*Math.PI),.018+u*(length-.038),.020*Math.sin(u*14*Math.PI)]);}tube(points,.0035,chrome,240,spring);rod(a.toArray(),a.clone().add(b.clone().sub(a).multiplyScalar(.36)).toArray(),.022,chrome);for(const p of [a,b]){cyl(.015,.016,[p.x,p.y,p.z+s*.009],chrome);screw([p.x,p.y,p.z+s*.019],.007);}}
+// Swept chrome rear supports, sissy bar and narrow padded backrest.
+for(const s of [-1,1]){tube([[-.405,.465,s*.103],[-.47,.49,s*.115],[-.58,.521,s*.115],[-.727,.524,s*.115],[-.781,.584,s*.104]],.012,chrome);tube([[-.72,.526,s*.103],[-.788,.589,s*.094],[-.791,.734,s*.094]],.006,chrome);}
+rod([-.79,.734,-.094],[-.79,.734,.094],.006,chrome);
+const back=roundedBox(.025,.110,.155,.009,[-.79,.692,0],leather);back.rotation.z=.012;
+// Seat: a smooth, genuinely concave single saddle, rising at rear and at tank.
+function loft(stations,m,n=60,k=44){const positions=[],ids=[];const v=stations.map(a=>new C.Vector4(...a));function value(i,u){const p0=v[Math.max(i-1,0)],p1=v[i],p2=v[Math.min(i+1,v.length-1)],p3=v[Math.min(i+2,v.length-1)];let out=[];for(let d=0;d<4;d++){const a=p0.getComponent(d),b=p1.getComponent(d),c=p2.getComponent(d),e=p3.getComponent(d);out.push(.5*((2*b)+(-a+c)*u+(2*a-5*b+4*c-e)*u*u+(-a+3*b-3*c+e)*u*u*u));}return out;}for(let i=0;i<=n;i++){let t=i/n*(v.length-1),ii=Math.min(Math.floor(t),v.length-2),u=t-ii;const [x,y,ry,rz]=value(ii,u);for(let j=0;j<=k;j++){const a=j/k*Math.PI*2;positions.push(x,y+ry*Math.cos(a),rz*Math.sin(a));}}for(let i=0;i<n;i++)for(let j=0;j<k;j++){const a=i*(k+1)+j,b=a+k+1;ids.push(a,a+1,b,b,a+1,b+1);}const g=new C.BufferGeometry();g.setAttribute('position',new C.Float32BufferAttribute(positions,3));g.setIndex(ids);g.computeVertexNormals();return mesh(g,m);}
+const seatStations=[[-.55,.598,0,0],[-.535,.595,.034,.09],[-.49,.563,.040,.116],[-.41,.547,.039,.119],[-.33,.553,.035,.105],[-.24,.58,.032,.077],[-.195,.602,.022,.05],[-.181,.599,0,0]];
+loft(seatStations,leather);
+for(const s of [-1,1])tube([[-.54,.613,s*.04],[-.50,.584,s*.098],[-.42,.574,s*.108],[-.34,.58,s*.094],[-.25,.606,s*.066],[-.20,.617,s*.038]],.0018,dark);
+// Teardrop tank, tail taper and high rounded nose; not a generic horizontal capsule.
+const tankStations=[[-.176,.569,0,0],[-.145,.590,.021,.036],[-.09,.625,.042,.063],[-.02,.660,.060,.085],[.055,.690,.074,.099],[.118,.702,.073,.100],[.164,.696,.060,.085],[.192,.687,.036,.052],[.205,.683,0,0]];
+loft(tankStations,paint,84,64);
+for(const s of [-1,1]){tube([[-.15,.583,s*.027],[-.095,.598,s*.051],[-.01,.615,s*.073],[.075,.635,s*.087],[.143,.650,s*.081],[.18,.679,s*.054]],.0017,satin);tube([[-.11,.627,s*.059],[-.035,.671,s*.081],[.048,.714,s*.093],[.113,.727,s*.091],[.155,.712,s*.072]],.001,chrome);}
+cyl(.025,.010,[.092,.779,0],chrome,[.1,1,0]);cyl(.018,.004,[.092,.786,0],satin,[.1,1,0]);rod([.078,.791,0],[.104,.789,0],.003,chrome);
+// Original typographic approximation only; no reference-image texture.
+const canvas=document.createElement('canvas');canvas.width=512;canvas.height=256;const ctx=canvas.getContext('2d');ctx.clearRect(0,0,512,256);ctx.fillStyle='#bfc9d0';ctx.font='italic bold 100px Georgia';ctx.textAlign='center';ctx.fillText('Jazz',256,155);ctx.font='22px Arial';ctx.fillText('HONDA',256,63);const tex=new C.CanvasTexture(canvas);tex.colorSpace=C.SRGBColorSpace;const decalMat=new C.MeshStandardMaterial({map:tex,transparent:true,metalness:.65,roughness:.3,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2});for(const s of [-1,1]){const badge=mesh(new C.PlaneGeometry(.113,.056),decalMat,[.11,.7,s*.098]);badge.rotation.y=s===1?-.15:Math.PI+.15;badge.rotation.z=.24;}
+// Thin side boxes, metal battery cover, ignition under tank.
+for(const s of [-1,1]){const box=roundedBox(.15,.112,.025,.012,[-.322,.423,s*.074],paint);box.rotation.z=.15;roundedBox(.137,.113,.018,.002,[-.18,.436,s*.099],satin);roundedBox(.126,.102,.003,.001,[-.18,.436,s*.110],alloy,.001);for(let i=0;i<5;i++)rod([-.212+i*.012,.417,s*.113],[-.212+i*.012,.462,s*.113],.002,dark);for(const x of [-.238,-.122])for(const y of [.39,.482])screw([x,y,s*.116],.0024);}
+// Small horizontal single-cylinder engine / crankcase. No V-twin geometry.
+const caseBody=roundedBox(.205,.129,.135,.042,[-.155,.287,0],alloy,.012);cyl(.064,.017,[-.116,.294,.083],satin);cyl(.045,.021,[-.116,.294,.096],alloy);cyl(.036,.004,[-.116,.294,.109],satin);cyl(.033,.026,[-.245,.267,.071],alloy);cyl(.019,.008,[-.245,.267,.089],satin);
+for(let i=0;i<8;i++){const a=i/8*Math.PI*2;screw([-.116+.055*Math.cos(a),.294+.055*Math.sin(a),.096],.0033);}for(const p of [[-.236,.323,.078],[-.228,.22,.079],[-.163,.222,.08],[-.071,.25,.082]])screw(p,.004);
+// Cylinder projects forward, slightly upward; fin stack in planes normal to its axis.
+const ca=new C.Vector3(-.045,.291,0),cb=new C.Vector3(.055,.326,0);rod(ca.toArray(),cb.toArray(),.049,dark);
+for(let i=0;i<11;i++){const t=i/10,p=ca.clone().lerp(cb,t);const f=roundedBox(.005,.105,.122,.010,p.toArray(),alloy,.001);f.rotation.z=.32;}
+const head=roundedBox(.047,.092,.115,.014,[.065,.329,0],alloy,.004);head.rotation.z=.32;for(const s of [-1,1]){for(let i=0;i<5;i++)rod([.046,.299+i*.014,s*.061],[.088,.312+i*.014,s*.061],.0023,satin);screw([.066,.338,s*.063],.006);}
+// Intake, carburettor, spark lead and small hoses.
+tube([[.019,.358,0],[-.005,.418,0],[-.052,.443,0],[-.069,.401,0]],.013,alloy);cyl(.022,.05,[-.07,.419,0],satin,[0,1,0]);ell([-.07,.392,0],[.026,.017,.021],alloy);tube([[-.07,.446,.02],[-.103,.504,.03],[-.002,.552,.025]],.003,rubber);tube([[.08,.35,.03],[.091,.396,.04],[.045,.475,.035],[.002,.523,.02]],.004,rubber);
+// Low chromed exhaust: visible header loop and long tapered silencer.
+tube([[.072,.31,.027],[.088,.25,.079],[.06,.175,.106],[-.005,.148,.118],[-.18,.148,.118],[-.292,.169,.118],[-.47,.166,.118]],.016,chrome,100);
+rod([-.305,.157,.12],[-.79,.165,.12],.031,chrome,.027);cyl(.025,.012,[-.79,.165,.12],chrome,[-1,0,0]);cyl(.015,.014,[-.797,.165,.12],dark,[-1,0,0]);rod([-.32,.183,.142],[-.76,.188,.142],.004,chrome);
+// Foot controls and rubber pegs, kick-start and brake pedal.
+for(const s of [-1,1]){rod([.027,.196,s*.058],[.027,.196,s*.18],.009,chrome);cyl(.018,.075,[.027,.196,s*.192],rubber);for(let j=0;j<7;j++)ring(.017,.0018,[.027,.196,s*(.16+j*.01)],dark);}
+tube([[.008,.205,.12],[.075,.215,.158],[.16,.236,.158],[.169,.265,.158]],.006,chrome);rod([.153,.265,.145],[.181,.265,.175],.009,satin);
+tube([[-.21,.246,.10],[-.252,.205,.12],[-.267,.295,.15],[-.24,.324,.15]],.007,chrome);rod([-.24,.324,.15],[-.24,.324,.205],.011,rubber);
+// Long raked front forks (34° from vertical), narrow yokes, forward axle.
+for(const s of [-1,1]){const z=s*.076;rod([.657,.269,z],[.484,.507,z],.023,satin);rod([.484,.507,z],[.281,.807,z],.013,chrome);rod([.470,.526,z],[.443,.562,z],.025,chrome);rod([.303,.775,z],[.287,.80,z],.022,chrome);cyl(.014,.016,[.657,.269,z+s*.021],satin);screw([.657,.269,z+s*.031],.007);rod([.502,.48,z],[.53,.55,z],.003,chrome);}
+rod([.428,.574,-.101],[.428,.574,.101],.020,frame);rod([.307,.752,-.096],[.307,.752,.096],.018,chrome);rod([.268,.814,-.091],[.268,.814,.091],.016,chrome);
+// Headlamp points forward (+X), with modeled chrome shell, bezel and lens ribs.
+ell([.365,.758,0],[.066,.051,.051],chrome);cyl(.052,.012,[.418,.758,0],chrome,[1,0,0]);cyl(.046,.003,[.426,.758,0],lamp,[1,0,0]);const headring=ring(.047,.003,[.429,.758,0]);headring.rotation.y=Math.PI/2;for(let i=-6;i<=6;i++){const zz=i*.006,hh=Math.sqrt(.044*.044-zz*zz);rod([.429,.758-hh,zz],[.429,.758+hh,zz],.00065,satin);}rod([.35,.72,-.062],[.35,.72,.062],.008,chrome);
+// Raised swept handlebars, controls, brake cables, mirrors.
+for(const s of [-1,1]){tube([[.268,.815,s*.038],[.233,.88,s*.05],[.191,.958,s*.12],[.128,.969,s*.257],[.071,.923,s*.32]],.012,chrome);rod([.076,.928,s*.31],[.027,.881,s*.35],.017,rubber);for(let j=0;j<8;j++){const t=j/7;const p=new C.Vector3(.076,.928,s*.31).lerp(new C.Vector3(.027,.881,s*.35),t);const ringg=ring(.016,.0013,p.toArray(),dark);ringg.quaternion.setFromUnitVectors(new C.Vector3(0,0,1),new C.Vector3(-.049,-.047,s*.04).normalize());}ell([.087,.94,s*.286],[.022,.025,.024],dark);tube([[.091,.949,s*.294],[.037,.957,s*.337],[.004,.92,s*.362]],.004,chrome);tube([[.096,.949,s*.284],[.069,1.013,s*.273],[-.014,1.058,s*.276]],.005,chrome);const mir=ell([-.026,1.082,s*.278],[.016,.050,.032],chrome);mir.rotation.z=-.20;const face=ell([-.036,1.083,s*.278],[.005,.043,.026],mat('#9eafb5',1,.08));face.rotation.z=-.20;tube([[.107,.95,s*.265],[.264,.972,s*.159],[.321,.839,s*.116],[.349,.738,s*.08],[.487,.526,s*.047]],.0035,rubber,90);}
+// Single tilted speedometer.
+const meter=cyl(.033,.034,[.222,.882,0],chrome,[-.55,.83,0]);const meterface=cyl(.029,.002,[.212,.897,0],dark,[-.55,.83,0]);rod([.207,.903,0],[.222,.913,.014],.001,red);
+// Turn indicators on chrome stalks, front and rear.
+for(const [x,y,z] of [[.296,.836,.131],[-.691,.510,.153]])for(const s of [-1,1]){rod([x,y,s*(z-.06)],[x,y,s*z],.007,chrome);cyl(.021,.041,[x,y,s*z],chrome,[1,0,0]);cyl(.020,.009,[x+.024,y,s*z],amber,[1,0,0]);for(let i=-2;i<=2;i++)rod([x+.029,y-.014,s*z+i*.005],[x+.029,y+.014,s*z+i*.005],.0005,amber);}
+// Rear chain (far side) and sprocket.
+cyl(.071,.008,[-.6625,.267,-.062],satin);ring(.067,.004,[-.6625,.267,-.07],dark);tube([[-.665,.337,-.072],[-.225,.322,-.072],[-.171,.282,-.072],[-.225,.231,-.072],[-.662,.197,-.072],[-.727,.257,-.072],[-.665,.337,-.072]],.005,dark,90);
+// Black brake and speedometer cable along fork.
+tube([[.06,.929,.32],[.253,.941,.19],[.346,.727,.09],[.459,.499,.086],[.607,.307,.078]],.003,rubber,90);
+// Consolidate draw objects, not shape detail. Tires remain separately editable.
+function batchMeshes(parent, editable=false){
+ const groups=new Map();
+ for(const object of [...parent.children]){if(!object.isMesh)continue;const key=object.material.uuid;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(object);}
+ for(const objects of groups.values()){
+  let vertexCount=0,indexCount=0;for(const o of objects){vertexCount+=o.geometry.attributes.position.count;indexCount+=o.geometry.index?.count??o.geometry.attributes.position.count;}
+  const positions=new Float32Array(vertexCount*3),normals=new Float32Array(vertexCount*3),uvs=new Float32Array(vertexCount*2),indices=new Uint32Array(indexCount);
+  let vertexOffset=0,indexOffset=0;const point=new C.Vector3(),normal=new C.Vector3(),normalMatrix=new C.Matrix3();
+  for(const object of objects){object.updateMatrix();const g=object.geometry,p=g.attributes.position,n=g.attributes.normal,uv=g.attributes.uv;normalMatrix.getNormalMatrix(object.matrix);
+   for(let i=0;i<p.count;i++){point.fromBufferAttribute(p,i).applyMatrix4(object.matrix);positions.set([point.x,point.y,point.z],(vertexOffset+i)*3);normal.fromBufferAttribute(n,i).applyMatrix3(normalMatrix).normalize();normals.set([normal.x,normal.y,normal.z],(vertexOffset+i)*3);if(uv)uvs.set([uv.getX(i),uv.getY(i)],(vertexOffset+i)*2);}
+   const count=g.index?.count??p.count;for(let i=0;i<count;i++)indices[indexOffset+i]=vertexOffset+(g.index?g.index.getX(i):i);vertexOffset+=p.count;indexOffset+=count;parent.remove(object);g.dispose();
+  }
+  const geometry=new C.BufferGeometry();geometry.setAttribute('position',new C.BufferAttribute(positions,3));geometry.setAttribute('normal',new C.BufferAttribute(normals,3));geometry.setAttribute('uv',new C.BufferAttribute(uvs,2));geometry.setIndex(new C.BufferAttribute(indices,1));geometry.computeBoundingSphere();
+  const merged=mesh(geometry,objects[0].material,[0,0,0],parent);merged.name=editable?'Editable tire surface':'Batched frame/body surface';if(editable)merged.userData.basePositions=new Float32Array(positions);
+ }
+}
+let originalDrawObjects=0;bike.traverse(o=>{if(o.isMesh)originalDrawObjects++;});
+batchMeshes(bike);for(const t of tireGroups)batchMeshes(t.group,true);
+let batchedDrawObjects=0;bike.traverse(o=>{if(o.isMesh)batchedDrawObjects++;});
+
+// Studio lighting / geometry reflections, no photographic backplate.
+const envScene=new C.Scene();envScene.background=new C.Color('#888b8a');const envMat=(c,i)=>new C.MeshBasicMaterial({color:c,toneMapped:false});function softbox(p,s,c){const m=new C.Mesh(new C.PlaneGeometry(...s),envMat(c));m.position.set(...p);m.lookAt(0,.3,0);envScene.add(m);}softbox([0,4,1],[5,2],'#ffffff');softbox([-3,2,1],[2,3],'#ffffff');softbox([1,1,-4],[4,.7],'#ffffff');softbox([2,.5,3],[1,2],'#c3c8ce');softbox([0,-1,0],[8,8],'#303838');const pmrem=new C.PMREMGenerator(renderer);scene.environment=pmrem.fromScene(envScene,.06).texture;pmrem.dispose();
+scene.add(new C.HemisphereLight('#f9faff','#8d958a',2.0));const key=new C.DirectionalLight('#fff9ee',3.5);key.position.set(-1,3,2);key.castShadow=true;key.shadow.mapSize.set(mobile?512:1024,mobile?512:1024);key.shadow.camera.left=-1.7;key.shadow.camera.right=1.7;key.shadow.camera.top=1.6;key.shadow.camera.bottom=-1.6;key.shadow.normalBias=.006;key.shadow.bias=-.0002;key.shadow.radius=4;scene.add(key);const fill=new C.DirectionalLight('#ecf3ff',1.8);fill.position.set(2,1,-2);scene.add(fill);
+const floor=mesh(new C.PlaneGeometry(200,200),mat('#e9e7e2',0,.9),[0,-.0005,0],scene);floor.rotation.x=-Math.PI/2;floor.castShadow=false;floor.receiveShadow=true;
+// Lightweight orbit controller with view presets; no customization features in milestone 01.
+let theta=0,phi=1.45,radius=3.40;const target=new C.Vector3(-.01,.52,0);let desired=null;
+const presets={side:[0,Math.PI/2,2.8,'RIGHT PROFILE'],three:[.66,1.28,2.85,'FRONT THREE-QUARTER'],rear:[-.70,1.32,2.85,'REAR THREE-QUARTER'],left:[Math.PI,Math.PI/2,2.8,'LEFT PROFILE']};
+function setView(v,instant=false){if(!Object.prototype.hasOwnProperty.call(presets,v))v='side';const p=presets[v];desired={theta:p[0],phi:p[1],radius:p[2]};if(instant){({theta,phi,radius}=desired);desired=null;}document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===v));document.getElementById('view-label').textContent=p[3];invalidate();}
+function resize(){const w=stage.clientWidth,h=stage.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();invalidate();}window.addEventListener('resize',resize);resize();
+let drag=false,last=[0,0],moved=false;const pointers=new Map();let pinch=0;
+renderer.domElement.addEventListener('pointerdown',e=>{pointers.set(e.pointerId,[e.clientX,e.clientY]);drag=true;last=[e.clientX,e.clientY];renderer.domElement.setPointerCapture(e.pointerId);desired=null;if(pointers.size===2){const p=[...pointers.values()];pinch=Math.hypot(p[0][0]-p[1][0],p[0][1]-p[1][1]);}});
+renderer.domElement.addEventListener('pointermove',e=>{if(!drag)return;pointers.set(e.pointerId,[e.clientX,e.clientY]);if(pointers.size===2){const p=[...pointers.values()],d=Math.hypot(p[0][0]-p[1][0],p[0][1]-p[1][1]);if(pinch)radius*=pinch/d;pinch=d;}else{theta-=(e.clientX-last[0])*.006;phi-= (e.clientY-last[1])*.005;}phi=C.MathUtils.clamp(phi,.35,1.7);radius=C.MathUtils.clamp(radius,1.8,5.5);last=[e.clientX,e.clientY];document.querySelectorAll('[data-view]').forEach(b=>b.classList.remove('active'));document.getElementById('view-label').textContent='ORBIT VIEW';invalidate();});
+function release(e){pointers.delete(e.pointerId);drag=pointers.size>0;if(pointers.size===1)last=[...pointers.values()][0];pinch=0;}
+renderer.domElement.addEventListener('pointerup',release);renderer.domElement.addEventListener('pointercancel',release);renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();desired=null;radius=C.MathUtils.clamp(radius*Math.exp(e.deltaY*.001),1.8,5.5);invalidate();},{passive:false});
+// Rigid chassis pitch from two circular tires touching the same ground plane.
+function tirePose(frontMM,rearMM){const rf=frontMM/2000,rr=rearMM/2000;const angle=Math.asin((rf-rr)/1.325);return {angle,height:(rf+rr)/2-.267*Math.cos(angle),rf,rr};}
+function setTires(frontMM,rearMM){const p=tirePose(frontMM,rearMM);for(const t of tireGroups){const newOuter=t.x>0?p.rf:p.rr;const spanScale=(newOuter-t.rim)/(t.baselineRadius-t.rim);for(const part of t.group.children){const a=part.userData.basePositions,pos=part.geometry.getAttribute('position');for(let i=0;i<pos.count;i++){const dx=a[i*3]-t.x,dy=a[i*3+1]-t.y,r=Math.hypot(dx,dy),newR=t.rim+(r-t.rim)*spanScale;pos.setXYZ(i,t.x+dx*newR/r,t.y+dy*newR/r,a[i*3+2]);}pos.needsUpdate=true;part.geometry.computeVertexNormals();part.geometry.computeBoundingSphere();}}bike.rotation.z=p.angle;bike.position.y=p.height;document.getElementById('front-value').value=frontMM+' mm';document.getElementById('rear-value').value=rearMM+' mm';document.getElementById('pitch').textContent=(p.angle*180/Math.PI).toFixed(1)+'°';document.getElementById('front-diameter').value=frontMM;document.getElementById('rear-diameter').value=rearMM;invalidate();return p;}
+for(const id of ['front-diameter','rear-diameter'])document.getElementById(id).addEventListener('input',()=>setTires(+document.getElementById('front-diameter').value,+document.getElementById('rear-diameter').value));document.getElementById('tires-reset').addEventListener('click',()=>setTires(534,534));setTires(534,534);
+document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>{if(window.JAZZ_STATE.active3D)setView(b.dataset.view);}));document.getElementById('reset').addEventListener('click',()=>setView('side'));
+const initialView=new URLSearchParams(location.search).get('view');setView(Object.prototype.hasOwnProperty.call(presets,initialView)?initialView:'side',true);
+function render(){
+ pendingFrame=false;if(!running)return;
+ try {
+  if(desired){theta=C.MathUtils.lerp(theta,desired.theta,.14);phi=C.MathUtils.lerp(phi,desired.phi,.14);radius=C.MathUtils.lerp(radius,desired.radius,.14);if(Math.abs(theta-desired.theta)+Math.abs(phi-desired.phi)+Math.abs(radius-desired.radius)<.0001)desired=null;}
+  const responsive=camera.aspect<1.1?1.1/camera.aspect:1;
+  camera.position.set(target.x+radius*responsive*Math.sin(theta)*Math.sin(phi),target.y+radius*responsive*Math.cos(phi),target.z+radius*responsive*Math.cos(theta)*Math.sin(phi));camera.lookAt(target);
+  if(dirty||desired){renderer.render(scene,camera);dirty=false;}if(desired)invalidate();
+ } catch(error){running=false;window.JAZZ_SHOW_STATIC('3D描画を続けられないため、静止画に切り替えました。','render-error');console.warn('JAZZ render error:',error?.message);}
+}
+// Initial render must succeed before the static image and disabled controls disappear.
+render();if(running)window.JAZZ_READY();
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)invalidate();});
+window.JAZZ_PROTOTYPE={version:'0.1.1',model:'Owned procedural approximation based on supplied reference',wheelbase:1.325,frontRimDiameter:.4064,rearRimDiameter:.3048,meshes:batchedDrawObjects,originalDrawObjects,mobile,setView,setTires,tirePose,renderer,scene,camera,bike};
+
+} catch(error) {
+ const message=/WebGL|context/i.test(error?.message||'')
+  ? 'このブラウザでは3D描画を開始できないため、静止画を表示しています。待ち続ける必要はありません。WebGL対応のSafariやChromeで開いてください。'
+  : '3Dの起動中にエラーが発生したため、静止画を表示しています。ページを再読み込みすると再試行できます。';
+ window.JAZZ_SHOW_STATIC(message,'initialization-error');console.warn('JAZZ initialization error:',error?.message);
+}
