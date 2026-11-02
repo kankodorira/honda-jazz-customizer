@@ -46,5 +46,5 @@ requestAnimationFrame(() => {
   const watchdog = setTimeout(() => {
     if (!state.active3D) status.textContent = '確認用の静止画です。3Dが起動しない場合、この画面のまま待ち続ける必要はありません。ブラウザのWebGL対応をご確認ください。';
   }, 12000);
-  import('./app.js?v=0.5.0').catch(reportStartupError).finally(() => clearTimeout(watchdog));
+  import('./app.js?v=0.5.1').catch(reportStartupError).finally(() => clearTimeout(watchdog));
 });
